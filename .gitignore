@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# API keys / secrets — never commit these
+.env
+.env.local
+secrets.js
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor directories
+.vscode/
+.idea/
+
+# Build output (if added later)
+dist/
+build/
