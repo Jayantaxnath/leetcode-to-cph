@@ -12,13 +12,19 @@
   ],
   "host_permissions": [
     "https://leetcode.com/*",
+    "https://leetcode.cn/*",
     "http://localhost:27121/*",
     "http://127.0.0.1:27121/*",
     "https://api.groq.com/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://leetcode.com/problems/*"],
+      "matches": [
+        "https://leetcode.com/problems/*",
+        "https://leetcode.com/contest/*/problems/*",
+        "https://leetcode.cn/problems/*",
+        "https://leetcode.cn/contest/*/problems/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
