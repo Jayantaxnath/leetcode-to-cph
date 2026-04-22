@@ -1,5 +1,11 @@
 # LeetCode → CPH
 
+![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-4285F4?logo=googlechrome&logoColor=white)
+![Manifest V3](https://img.shields.io/badge/Manifest-V3-34A853?logo=google&logoColor=white)
+![Groq API](https://img.shields.io/badge/Groq-Llama%204-F55036?logo=meta&logoColor=white)
+![CPH](https://img.shields.io/badge/CPH-VS%20Code-007ACC?logo=visualstudiocode&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow)
+
 A minimal Chrome Extension (Manifest V3) that extracts LeetCode problem examples, converts them into competitive programming format using the Groq API (Llama 4), and sends them directly to [CPH (Competitive Programming Helper)](https://github.com/agrawal-d/cph) running in VS Code.
 
 ## How it works
@@ -8,7 +14,7 @@ A minimal Chrome Extension (Manifest V3) that extracts LeetCode problem examples
 LeetCode page → extract examples → Groq API (Llama 4) → CPH (localhost:27121)
 ```
 
-A small toast notification in the bottom-right corner shows live progress.
+A top progress bar shows live status as each step completes.
 
 ## Setup
 
@@ -37,7 +43,7 @@ Navigate to any LeetCode problem page — the extension runs automatically.
 | File | Purpose |
 |---|---|
 | `manifest.json` | Extension config (MV3) |
-| `content.js` | Extracts examples, calls Groq API, shows toast UI |
+| `content.js` | Extracts examples, calls Groq API, shows progress bar |
 | `background.js` | Proxies the CPH fetch (bypasses CORS) |
 
 ## Tech
