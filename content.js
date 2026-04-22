@@ -1,34 +1,62 @@
-const API_KEY = "YOUR_GROQ_API_KEY"; // Replace with your key from console.groq.com
+const API_KEY = ""; // Replace with your key from console.groq.com
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const CPH_URL = "http://localhost:27121";
 
-// ── Minimal toast UI ──────────────────────────────────────────────
-function createToast() {
-  const el = document.createElement("div");
-  el.id = "cph-toast";
-  el.style.cssText = [
-    "position:fixed", "bottom:24px", "right:24px", "z-index:999999",
-    "background:#1e1e2e", "color:#cdd6f4", "font:13px/1.5 monospace",
-    "padding:10px 16px", "border-radius:8px", "box-shadow:0 4px 20px rgba(0,0,0,.5)",
-    "border-left:3px solid #89b4fa", "min-width:220px", "max-width:320px",
-    "transition:opacity .3s"
+// ── Top progress-bar UI ─────────────────────────────────────────
+function createProgressBar() {
+  // Container that spans full width at the very top
+  const bar = document.createElement("div");
+  bar.id = "cph-progress-bar";
+  bar.style.cssText = [
+    "position:fixed", "top:0", "left:0", "right:0", "z-index:999999",
+    "height:auto", "font:13px/1.5 'Segoe UI',system-ui,sans-serif",
+    "background:#1e1e2e", "color:#cdd6f4",
+    "box-shadow:0 2px 12px rgba(0,0,0,.4)",
+    "transition:opacity .3s, transform .3s",
+    "transform:translateY(0)"
   ].join(";");
-  document.body.appendChild(el);
-  return el;
+
+  // Inner progress track
+  const track = document.createElement("div");
+  track.id = "cph-progress-track";
+  track.style.cssText = [
+    "height:3px", "background:#89b4fa", "width:0%",
+    "transition:width .4s ease"
+  ].join(";");
+  bar.appendChild(track);
+
+  // Status text row
+  const status = document.createElement("div");
+  status.id = "cph-progress-status";
+  status.style.cssText = [
+    "padding:6px 16px", "display:flex", "align-items:center", "gap:8px"
+  ].join(";");
+  bar.appendChild(status);
+
+  document.body.appendChild(bar);
+  return bar;
 }
 
-function setToast(el, msg, state /* 'info'|'ok'|'err' */) {
+function setProgress(bar, msg, pct, state /* 'info'|'ok'|'err' */) {
   const colors = { info: "#89b4fa", ok: "#a6e3a1", err: "#f38ba8" };
-  const icons  = { info: "⏳", ok: "✅", err: "❌" };
-  el.style.borderLeftColor = colors[state] || colors.info;
-  el.textContent = icons[state] + "  " + msg;
-  el.style.opacity = "1";
+  const icons = { info: "⏳", ok: "✅", err: "❌" };
+
+  const track = bar.querySelector("#cph-progress-track");
+  const status = bar.querySelector("#cph-progress-status");
+
+  track.style.background = colors[state] || colors.info;
+  track.style.width = `${pct}%`;
+
+  status.textContent = `${icons[state] || "⏳"}  ${msg}`;
+  bar.style.opacity = "1";
+  bar.style.transform = "translateY(0)";
 }
 
-function dismissToast(el, delay = 4000) {
+function dismissProgress(bar, delay = 4000) {
   setTimeout(() => {
-    el.style.opacity = "0";
-    setTimeout(() => el.remove(), 350);
+    bar.style.transform = "translateY(-100%)";
+    bar.style.opacity = "0";
+    setTimeout(() => bar.remove(), 350);
   }, delay);
 }
 // ─────────────────────────────────────────────────────────────────
@@ -36,7 +64,37 @@ function dismissToast(el, delay = 4000) {
 function extractExamples() {
   const examples = [];
 
-  // Pass 1: <pre> blocks inside example containers
+  // ── Pass 0: Contest / modern problem page layout ─────────────────
+  // Structure: [data-track-load="description_content"]
+  //              └── .example-block
+  //                    ├── .example-io  (input)
+  //                    └── .example-io  (output)
+  const descRoot = document.querySelector('[data-track-load="description_content"]');
+  const contestBlocks = (descRoot || document).querySelectorAll(".example-block");
+
+  contestBlocks.forEach((block) => {
+    const ios = block.querySelectorAll(".example-io");
+    if (ios.length >= 2) {
+      // Strip leading label like "Input: " or "Output: " from each line
+      const stripLabel = (raw) =>
+        raw
+          .split("\n")
+          .map((line) => line.replace(/^\s*(Input|Output)\s*:\s*/i, "").trim())
+          .filter(Boolean)
+          .join("\n");
+
+      const input = stripLabel(ios[0].innerText || ios[0].textContent || "");
+      const output = stripLabel(ios[1].innerText || ios[1].textContent || "");
+
+      if (input && output) {
+        examples.push({ input, output });
+      }
+    }
+  });
+
+  if (examples.length > 0) return examples;
+
+  // ── Pass 1: <pre> blocks inside example containers ────────────────
   const exampleBlocks = document.querySelectorAll(
     '[class*="example"] pre, .example-block, pre'
   );
@@ -44,44 +102,44 @@ function extractExamples() {
   if (exampleBlocks.length > 0) {
     exampleBlocks.forEach((block) => {
       const text = block.innerText || block.textContent || "";
-      const inputMatch  = text.match(/Input[:\s]+([\s\S]*?)(?:Output[:\s]+|$)/i);
+      const inputMatch = text.match(/Input[:\s]+([\s\S]*?)(?:Output[:\s]+|$)/i);
       const outputMatch = text.match(/Output[:\s]+([\s\S]*?)(?:Explanation[:\s]+|$)/i);
       if (inputMatch && outputMatch) {
         examples.push({
-          input:  inputMatch[1].trim(),
+          input: inputMatch[1].trim(),
           output: outputMatch[1].trim(),
         });
       }
     });
   }
 
-  // Pass 2: data-example-id / ExampleTestcases containers
-  if (examples.length === 0) {
-    const containers = document.querySelectorAll('[data-example-id], [class*="ExampleTestcases"]');
-    containers.forEach((container) => {
-      const text = container.innerText || container.textContent || "";
-      const inputMatch  = text.match(/Input[:\s]+([\s\S]*?)Output[:\s]+/i);
-      const outputMatch = text.match(/Output[:\s]+([\s\S]*?)(?:Explanation|$)/i);
-      if (inputMatch && outputMatch) {
-        examples.push({
-          input:  inputMatch[1].trim(),
-          output: outputMatch[1].trim(),
-        });
-      }
-    });
-  }
+  if (examples.length > 0) return examples;
 
-  // Pass 3: full-page regex fallback
-  if (examples.length === 0) {
-    const allText = document.body.innerText;
-    const pattern = /Input:\s*([\s\S]*?)\nOutput:\s*([\s\S]*?)(?:\nExplanation:|\nExample \d|$)/gi;
-    let match;
-    while ((match = pattern.exec(allText)) !== null) {
+  // ── Pass 2: data-example-id / ExampleTestcases containers ─────────
+  const containers = document.querySelectorAll('[data-example-id], [class*="ExampleTestcases"]');
+  containers.forEach((container) => {
+    const text = container.innerText || container.textContent || "";
+    const inputMatch = text.match(/Input[:\s]+([\s\S]*?)Output[:\s]+/i);
+    const outputMatch = text.match(/Output[:\s]+([\s\S]*?)(?:Explanation|$)/i);
+    if (inputMatch && outputMatch) {
       examples.push({
-        input:  match[1].trim(),
-        output: match[2].trim(),
+        input: inputMatch[1].trim(),
+        output: outputMatch[1].trim(),
       });
     }
+  });
+
+  if (examples.length > 0) return examples;
+
+  // ── Pass 3: full-page regex fallback ──────────────────────────────
+  const allText = document.body.innerText;
+  const pattern = /Input:\s*([\s\S]*?)\nOutput:\s*([\s\S]*?)(?:\nExplanation:|\nExample \d|$)/gi;
+  let match;
+  while ((match = pattern.exec(allText)) !== null) {
+    examples.push({
+      input: match[1].trim(),
+      output: match[2].trim(),
+    });
   }
 
   return examples;
@@ -110,7 +168,7 @@ async function callGroqAPI(prompt) {
           content: `Convert LeetCode examples into stdin/stdout format.
 Return ONLY valid JSON: {"tests":[{"input":"...","output":"..."}]}.
 Each example is one test.
-Use plain strings and end each line with \n.
+Use plain strings and end each line with \\n.
 No explanations or extra text.`,
         },
         { role: "user", content: prompt },
@@ -164,49 +222,50 @@ async function sendToCPH(tests) {
   });
 }
 
+
 async function main() {
-  const toast = createToast();
-  setToast(toast, "Extracting examples…", "info");
+  const bar = createProgressBar();
+  setProgress(bar, "Extracting examples…", 10, "info");
 
   const examples = extractExamples();
 
   if (examples.length === 0) {
-    setToast(toast, "No examples found on this page.", "err");
-    dismissToast(toast, 5000);
+    setProgress(bar, "No examples found on this page.", 100, "err");
+    dismissProgress(bar, 5000);
     return;
   }
 
-  setToast(toast, `Found ${examples.length} example(s) — calling API…`, "info");
+  setProgress(bar, `Found ${examples.length} example(s) — calling API…`, 30, "info");
   const prompt = buildPrompt(examples);
   let rawResponse;
 
   try {
     rawResponse = await callGroqAPI(prompt);
   } catch (err) {
-    setToast(toast, "Groq API call failed. Check console.", "err");
-    dismissToast(toast, 6000);
+    setProgress(bar, "Groq API call failed. Check console.", 100, "err");
+    dismissProgress(bar, 6000);
     console.error("[CPH]", err);
     return;
   }
 
-  setToast(toast, "Parsing response…", "info");
+  setProgress(bar, "Parsing response…", 65, "info");
   const parsed = parseGroqResponse(rawResponse);
 
   if (!parsed || !Array.isArray(parsed.tests) || parsed.tests.length === 0) {
-    setToast(toast, "Bad API response — couldn't parse tests.", "err");
-    dismissToast(toast, 6000);
+    setProgress(bar, "Bad API response — couldn't parse tests.", 100, "err");
+    dismissProgress(bar, 6000);
     return;
   }
 
-  setToast(toast, `Sending ${parsed.tests.length} test(s) to CPH…`, "info");
+  setProgress(bar, `Sending ${parsed.tests.length} test(s) to CPH…`, 80, "info");
 
   try {
     await sendToCPH(parsed.tests);
-    setToast(toast, `Done! ${parsed.tests.length} test(s) sent to CPH.`, "ok");
-    dismissToast(toast, 4000);
+    setProgress(bar, `Done! ${parsed.tests.length} test(s) sent. Switch to VS Code ⟶`, 100, "ok");
+    dismissProgress(bar, 5000);
   } catch (err) {
-    setToast(toast, "Failed to send to CPH. Is it running?", "err");
-    dismissToast(toast, 6000);
+    setProgress(bar, "Failed to send to CPH. Is it running?", 100, "err");
+    dismissProgress(bar, 6000);
     console.error("[CPH]", err);
   }
 }
